@@ -3,17 +3,18 @@ numpy
 pandas
 spacy
 PyPDF2
-docx
 pytesseract
 pillow
 sentence-transformers
 scikit-learn
 gunicorn
-sqlite3
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
 email-validator
+python-docx
+openpyxl
+xlsxwriter
 
 
