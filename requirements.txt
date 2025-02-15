@@ -16,5 +16,8 @@ email-validator
 python-docx
 openpyxl
 xlsxwriter
+spacy-lookups-data
+spacy[transformers]
+pyttsx3
 
 
