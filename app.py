@@ -90,17 +90,18 @@ conn.commit()
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 print("Authenticating Gmail API...")
 
-client_secret_path = "client_secret.json"  # This file should be provided as a secret file in Render
+client_secret_json = os.getenv("CLIENT_SECRET_JSON")
+if not client_secret_json:
+    raise ValueError("❌ Missing CLIENT_SECRET_JSON environment variable!")
+client_config = json.loads(client_secret_json)
+  # This file should be provided as a secret file in Render
 
-if os.path.exists(client_secret_path):
-    with open(client_secret_path, "r") as f:
-        client_config = json.load(f)
-else:
-    raise ValueError("❌ Missing client_secret.json file!")
 
+token_json = os.getenv("TOKEN_JSON")
 creds = None
-if os.path.exists("token.json"):
-    creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+if token_json:
+    creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
+
 
 if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
