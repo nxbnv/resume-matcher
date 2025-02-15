@@ -61,7 +61,7 @@ except Exception as e:
 
 # ===================== DATABASE CONNECTION (PostgreSQL) =====================
 # Replace with your actual DATABASE_URL or set it as an environment variable in Render.
-DATABASE_URL = "postgresql://resume_db_ipqq_user:xfCGqic13f5QhTO2DWogATpveGTD1wmg@dpg-cuobdt52ng1s73e6jb30-a.oregon-postgres.render.com/resume_db_ipqq"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
     raise ValueError("❌ Missing DATABASE_URL environment variable!")
