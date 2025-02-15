@@ -20,8 +20,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 import spacy
 import re
 import numpy as np
-import sqlite3
 import zipfile
+import json
+import psycopg2
 
 print("Modules imported successfully!")
 
@@ -30,77 +31,90 @@ app.secret_key = "your_secret_key_here"
 
 # Create Upload Folder for Resumes
 UPLOAD_FOLDER = "uploaded_resumes"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Ensure folder exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Connect to SQLite Database
-db = sqlite3.connect("resume_db.sqlite", check_same_thread=False)
-cursor = db.cursor()
-
-# Create HR Table if it doesn’t exist
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS hr (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    full_name TEXT NOT NULL,
-    company_name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL
-)
-""")
-db.commit()
-
+# ===================== LOAD MODELS =====================
 try:
     print("Loading models...")
 
-    # Define paths
+    # Define paths for model files
     zip_path = "models/bert_model.zip"
     extract_path = "models/"
     model_path = os.path.join(extract_path, "bert_model.pkl")
 
-    # Extract bert_model.pkl if it hasn't been extracted yet
+    # Extract bert_model.pkl if not already extracted
     if not os.path.exists(model_path):
         print("Extracting bert_model.zip...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(extract_path)
         print("✅ Model extracted successfully!")
 
-    # Load models
+    # Load the vectorizer and BERT model
     vectorizer = pickle.load(open("models/vectorizer.pkl", "rb"))
     bert_model = pickle.load(open(model_path, "rb"))
     nlp = spacy.load("en_core_web_sm")
 
     print("✅ Models loaded successfully!")
-
 except Exception as e:
     print("❌ Error loading models:", e)
     exit(1)
 
-# Gmail API Authentication
-SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
-print("Authenticating Gmail API...")
-creds = None
+# ===================== DATABASE CONNECTION (PostgreSQL) =====================
+# Replace with your actual DATABASE_URL or set it as an environment variable in Render.
+DATABASE_URL = "postgresql://resume_db_ipqq_user:xfCGqic13f5QhTO2DWogATpveGTD1wmg@dpg-cuobdt52ng1s73e6jb30-a.oregon-postgres.render.com/resume_db_ipqq"
+
+if not DATABASE_URL:
+    raise ValueError("❌ Missing DATABASE_URL environment variable!")
 
 try:
-    if os.path.exists("token.json"):
-        with open("token.json", "r") as token:
-            creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file("client_secret.json", SCOPES)
-            creds = flow.run_local_server(port=5500)
-        with open("token.json", "w") as token:
-            token.write(creds.to_json())
-
-    service = build("gmail", "v1", credentials=creds)
-    print("✅ Gmail API authenticated!")
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    print("✅ Connected to PostgreSQL database!")
 except Exception as e:
-    print("❌ Error authenticating Gmail API:", e)
+    print("❌ Error connecting to PostgreSQL:", e)
     exit(1)
 
-# ========================== HR REGISTRATION & LOGIN ==========================
+# ===================== CREATE TABLES IF NOT EXISTS =====================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS hr (
+    id SERIAL PRIMARY KEY,
+    full_name TEXT NOT NULL,
+    company_name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL
+)
+""")
+conn.commit()
 
+# ===================== GMAIL API AUTHENTICATION =====================
+SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+print("Authenticating Gmail API...")
+
+client_secret_path = "client_secret.json"  # This file should be provided as a secret file in Render
+
+if os.path.exists(client_secret_path):
+    with open(client_secret_path, "r") as f:
+        client_config = json.load(f)
+else:
+    raise ValueError("❌ Missing client_secret.json file!")
+
+creds = None
+if os.path.exists("token.json"):
+    creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+
+if not creds or not creds.valid:
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    else:
+        flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+        creds = flow.run_local_server(port=5500)
+    with open("token.json", "w") as token:
+        token.write(creds.to_json())
+
+service = build("gmail", "v1", credentials=creds)
+print("✅ Gmail API authenticated!")
+
+# ===================== HR REGISTRATION & LOGIN =====================
 @app.route("/")
 def home():
     return redirect(url_for("register"))
@@ -118,11 +132,11 @@ def register():
             return jsonify({"error": "All fields are required"}), 400
 
         try:
-            cursor.execute("INSERT INTO hr (full_name, company_name, email, password) VALUES (?, ?, ?, ?)", 
+            cursor.execute("INSERT INTO hr (full_name, company_name, email, password) VALUES (%s, %s, %s, %s)", 
                            (full_name, company_name, email, password))
-            db.commit()
+            conn.commit()
             return redirect(url_for("login"))
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
             return jsonify({"error": "Email already registered"}), 400
 
     return render_template("register.html")
@@ -134,7 +148,7 @@ def login():
         email = request.form.get("email")
         password = request.form.get("password")
 
-        cursor.execute("SELECT full_name, company_name, email FROM hr WHERE email = ? AND password = ?", 
+        cursor.execute("SELECT full_name, company_name, email FROM hr WHERE email = %s AND password = %s", 
                        (email, password))
         user = cursor.fetchone()
 
@@ -159,8 +173,7 @@ def index():
         return redirect(url_for("login"))
     return render_template("index.html", hr_name=session["hr_name"], hr_company=session["hr_company"])
 
-# ========================== RESUME MATCHING & PROCESSING ==========================
-
+# ===================== RESUME MATCHING & PROCESSING =====================
 def extract_text_from_file(file):
     """Extract text from different file formats."""
     text = ""
@@ -181,7 +194,7 @@ def extract_name(text):
     """Extracts the candidate's name using spaCy's Named Entity Recognition (NER)."""
     doc = nlp(text)
     for ent in doc.ents:
-        if ent.label_ == "PERSON":  # Look for names recognized as 'PERSON'
+        if ent.label_ == "PERSON":
             return ent.text
     return None
 
@@ -193,7 +206,7 @@ def extract_email(text):
 def extract_phone_number(text):
     """Extract phone number from text."""
     phones = re.findall(r"\+?\d[\d -]{8,15}\d", text)
-    return phones[0] if phones else None  # ✅ Returns the first valid phone number
+    return phones[0] if phones else None
 
 @app.route("/matcher", methods=["POST"])
 def matcher():
@@ -208,31 +221,31 @@ def matcher():
     results = []
     for file in uploaded_files:
         file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(file_path)  # ✅ Save PDF inside the uploads folder
+        file.save(file_path)  # Save file in upload folder
 
         text = extract_text_from_file(file)
-        name = extract_name(text)  # ✅ Correct function for name
-        email = extract_email(text)  # ✅ Correct function for email
+        name = extract_name(text) or "Unknown"
+        email = extract_email(text) or "N/A"
+        phone = extract_phone_number(text)
 
-        bert_score = cosine_similarity([bert_model.encode(job_description)], [bert_model.encode(text)])[0][0]
+        bert_score = cosine_similarity(
+            [bert_model.encode(job_description)],
+            [bert_model.encode(text)]
+        )[0][0]
 
         results.append({
             "resume": file.filename,
-            "name": name if name else "Unknown",
-            "email": email if email else "N/A",
-            "phone": extract_phone_number(text),
+            "name": name,
+            "email": email,
+            "phone": phone,
             "bert_score": round(float(bert_score), 2),
-            "resume_link": f'=HYPERLINK("{os.path.abspath(file_path)}", "Open Resume")'  # ✅ Clickable Link
+            "resume_link": f'=HYPERLINK("{os.path.abspath(file_path)}", "Open Resume")'
         })
 
     selected_candidates = [res for res in results if res["bert_score"] >= score_threshold]
-
-    session["selected_candidates"] = selected_candidates  # ✅ Save in session
+    session["selected_candidates"] = selected_candidates
 
     return jsonify({"selected_candidates": selected_candidates, "scores": results})
-
-
-
 
 @app.route("/download-excel", methods=["GET"])
 def download_excel():
@@ -250,7 +263,7 @@ def download_excel():
 
     return send_file(file_path, as_attachment=True)
 
-def send_email(service,sender_name, sender_company, sender_email, recipient_email, subject, body):
+def send_email(service, sender_name, sender_company, sender_email, recipient_email, subject, body):
     """Send an email using Gmail API from the logged-in HR's email."""
     message = MIMEText(f"Dear {body},\n\nYou have been selected for an interview at {sender_company}.\n\nBest Regards,\n{sender_name}\n{sender_company}\n{sender_email}")
     message["From"] = f"{sender_name} <{sender_email}>"
@@ -264,8 +277,6 @@ def send_email(service,sender_name, sender_company, sender_email, recipient_emai
     except Exception as e:
         print(f"❌ Error sending email from {sender_email}: {e}")
 
-
-
 @app.route("/send-email", methods=["POST"])
 def send_selected_emails():
     if "user_email" not in session:
@@ -277,10 +288,9 @@ def send_selected_emails():
 
     for candidate in data["candidates"]:
         send_email(service, session["hr_name"], session["hr_company"], session["user_email"], 
-                   candidate["email"], "Interview Selection", f" {candidate['name']}, You have been selected!")
+                   candidate["email"], "Interview Selection", f"{candidate['name']}, You have been selected!")
 
     return jsonify({"message": "Emails sent successfully!"})
-
 
 if __name__ == "__main__":
     print("Starting Flask server...")
