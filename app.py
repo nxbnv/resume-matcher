@@ -21,6 +21,7 @@ import spacy
 import re
 import numpy as np
 import sqlite3
+import zipfile
 
 print("Modules imported successfully!")
 
@@ -49,10 +50,26 @@ db.commit()
 
 try:
     print("Loading models...")
+
+    # Define paths
+    zip_path = "models/bert_model.zip"
+    extract_path = "models/"
+    model_path = os.path.join(extract_path, "bert_model.pkl")
+
+    # Extract bert_model.pkl if it hasn't been extracted yet
+    if not os.path.exists(model_path):
+        print("Extracting bert_model.zip...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_path)
+        print("✅ Model extracted successfully!")
+
+    # Load models
     vectorizer = pickle.load(open("models/vectorizer.pkl", "rb"))
-    bert_model = pickle.load(open("models/bert_model.pkl", "rb"))
+    bert_model = pickle.load(open(model_path, "rb"))
     nlp = spacy.load("en_core_web_sm")
+
     print("✅ Models loaded successfully!")
+
 except Exception as e:
     print("❌ Error loading models:", e)
     exit(1)
