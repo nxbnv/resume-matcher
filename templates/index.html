@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Matcher</title>
+    
+    <!-- Bootstrap & Font Awesome -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- jQuery & SweetAlert -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        @keyframes gradientAnimation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        body {
+            background: linear-gradient(45deg, #1e3c72, #2a5298, #38ef7d, #11998e);
+            background-size: 300% 300%;
+            animation: gradientAnimation 10s ease infinite;
+            color: white;
+            font-family: 'Arial', sans-serif;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        h1 {
+            text-align: center;
+            font-weight: bold;
+            color: #f8f9fa;
+        }
+
+        .btn-primary, .btn-success, .btn-danger {
+            font-size: 18px;
+            font-weight: bold;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn-danger {
+            background-color: #dc3545;
+            border: none;
+        }
+
+        .btn-primary i, .btn-success i, .btn-danger i {
+            margin-right: 8px;
+        }
+
+        .table {
+            background: white;
+            color: black;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .table th {
+            background: #007bff;
+            color: white;
+        }
+
+        .table-striped tbody tr:nth-of-type(odd) {
+            background: #dff3ff;
+        }
+
+        #loading-spinner {
+            display: none;
+            text-align: center;
+        }
+
+        /* HR Details Section */
+        #hr-details {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1><i class="fas fa-file-alt"></i> Resume Matcher</h1>
+
+        <!-- HR Details Section -->
+        <div id="hr-details">
+            <p><i class="fas fa-user"></i> Logged in as: <span id="hr-name"></span> (<span id="hr-company"></span>)</p>
+        </div>
+
+        <!-- Logout Button -->
+        <button id="logout-button" class="btn btn-danger"><i class="fas fa-sign-out-alt"></i> Logout</button>
+        
+        <form id="matcher-form" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="job-description"><i class="fas fa-briefcase"></i> <b>Job Description:</b></label>
+                <textarea class="form-control" id="job-description" name="job_description" rows="4" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="score-threshold"><i class="fas fa-star"></i> <b>Score Threshold (BERT Score):</b></label>
+                <input type="number" step="0.1" class="form-control" id="score-threshold" name="score_threshold" required>
+            </div>
+            <div class="form-group">
+                <label for="resumes"><i class="fas fa-upload"></i> <b>Upload at least 5 Resumes:</b></label>
+                <input type="file" class="form-control-file" id="resumes" name="resumes" multiple required>
+            </div>
+            <button type="button" id="match-button" class="btn btn-primary"><i class="fas fa-search"></i> Match Resumes</button>
+            <button type="button" id="send-email-button" class="btn btn-success" style="display: none;"><i class="fas fa-envelope"></i> Send Emails</button>
+            <button type="button" id="download-excel-button" class="btn btn-warning" style="display: none;"><i class="fas fa-file-excel"></i> Download Excel</button>
+        </form>
+
+        <div id="loading-spinner" class="mt-3">
+            <div class="spinner-border text-light" role="status">
+                <span class="sr-only">Processing...</span>
+            </div>
+            <p>Matching resumes, please wait...</p>
+        </div>
+
+        <div id="results" class="mt-4"></div>
+
+        <!-- Selected Candidates Table -->
+        <div id="selected-candidates-section" class="mt-4" style="display: none;">
+            <h3><i class="fas fa-user-check"></i> Selected Candidates</h3>
+            <table class="table table-bordered table-striped">
+                <thead>
+                    <tr>
+                        <th>Candidate Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>BERT Score</th>
+                    </tr>
+                </thead>
+                <tbody id="selected-candidates-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function () {
+    // Set HR details from session
+    $("#hr-name").text("{{ hr_name }}");
+    $("#hr-company").text("{{ hr_company }}");
+
+    $("#match-button").click(function () {
+        let formData = new FormData($("#matcher-form")[0]);
+
+        $("#loading-spinner").show();
+        $("#results").html("");
+        $("#selected-candidates-section").hide();
+        $("#send-email-button").hide();
+        $("#download-excel-button").hide();
+
+        $.ajax({
+            type: "POST",
+            url: "/matcher",
+            data: formData,
+            contentType: false,
+            processData: false,
+            success: function (data) {
+                $("#loading-spinner").hide();
+                if (data.error) {
+                    Swal.fire("Error", data.error, "error");
+                    return;
+                }
+
+                let tableHtml = `<h3><i class="fas fa-list"></i> Matching Results:</h3>
+                    <table class='table table-bordered table-striped'>
+                        <thead>
+                            <tr>
+                                <th>Resume Name</th>
+                                <th>BERT Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+                $.each(data.scores, function (index, item) {
+                    tableHtml += `<tr>
+                        <td>${item.resume}</td>
+                        <td>${item.bert_score.toFixed(2)}</td>
+                    </tr>`;
+                });
+
+                tableHtml += "</tbody></table>";
+                $("#results").html(tableHtml);
+
+                if (data.selected_candidates.length > 0) {
+                    let selectedHtml = "";
+                    let selectedCandidates = [];
+
+                    $.each(data.selected_candidates, function (index, candidate) {
+                        selectedHtml += `<tr>
+                            <td>${candidate.name}</td>
+                            <td>${candidate.email}</td>
+                            <td>${candidate.phone || "N/A"}</td>
+                            <td>${candidate.bert_score.toFixed(2)}</td>
+        
+                        </tr>`;
+
+                        // Store candidate details in array for sending emails
+                        selectedCandidates.push({
+                            name: candidate.name,
+                            email: candidate.email
+                        });
+                    });
+
+                    $("#selected-candidates-body").html(selectedHtml);
+                    $("#selected-candidates-section").show();
+                    $("#send-email-button").show().data("candidates", selectedCandidates);
+                    $("#download-excel-button").show();
+                }
+            },
+            error: function () {
+                $("#loading-spinner").hide();
+                Swal.fire("Error", "Error processing request. Please try again.", "error");
+            }
+        });
+    });
+
+    // ✅ Send Emails Button Click
+    $("#send-email-button").click(function () {
+        let candidates = $("#send-email-button").data("candidates");
+
+        if (!candidates || candidates.length === 0) {
+            Swal.fire("Warning", "No candidates selected for emailing.", "warning");
+            return;
+        }
+
+        $.ajax({
+            type: "POST",
+            url: "/send-email",
+            contentType: "application/json",
+            data: JSON.stringify({ candidates: candidates }),
+            success: function (response) {
+                Swal.fire("Success", response.message, "success");
+            },
+            error: function (xhr) {
+                Swal.fire("Error", "Failed to send emails", "error");
+            }
+        });
+    });
+
+    // ✅ Download Excel Button Click
+    $("#download-excel-button").click(function () {
+        window.location.href = "/download-excel";
+    });
+
+    // ✅ Logout Button Click
+    $("#logout-button").click(function () {
+        window.location.href = "/logout";
+    });
+});
+
+    </script>
+</body>
+</html>
