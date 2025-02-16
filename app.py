@@ -25,6 +25,7 @@ import json
 import psycopg2
 from transformers import BertForSequenceClassification, BertTokenizer
 from joblib import dump,load
+import traceback  # To get detailed error messages
 
 print("Modules imported successfully!")
 
@@ -35,30 +36,47 @@ app.secret_key = "your_secret_key_here"
 UPLOAD_FOLDER = "uploaded_resumes"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Get absolute paths
-base_path = os.path.dirname(os.path.abspath(__file__))
-vectorizer_path = os.path.join(base_path, "models", "vectorizer.pkl")
-bert_model_path = os.path.join(base_path, "models", "bert_model.pkl")
+
 
 try:
     print("Loading models...")
 
-    # Load vectorizer
-    with open(vectorizer_path, "rb") as f:
-        vectorizer = pickle.load(f)
+    vectorizer_path = "models/vectorizer.pkl"
+    model_path = "models/bert_model.pkl"
 
-    # Load BERT model from pickle
-    with open(bert_model_path, "rb") as f:
-        bert_model = pickle.load(f)
+    # Verify files exist before loading
+    import os
+    assert os.path.exists(vectorizer_path), f"❌ Missing file: {vectorizer_path}"
+    assert os.path.exists(model_path), f"❌ Missing file: {model_path}"
 
-    # Load spaCy NLP model
-    nlp = spacy.load("en_core_web_sm")
+    print("✅ Vectorizer and BERT model found!")
 
-    print("✅ Models loaded successfully!")
+    # Load models with error handling
+    try:
+        with open(vectorizer_path, "rb") as f:
+            vectorizer = pickle.load(f)
+        print("✅ Vectorizer loaded!")
+    except Exception as e:
+        print("❌ Error loading vectorizer:", e)
+        print(traceback.format_exc())
+
+    try:
+        with open(model_path, "rb") as f:
+            bert_model = pickle.load(f)
+        print("✅ BERT model loaded!")
+    except Exception as e:
+        print("❌ Error loading BERT model:", e)
+        print(traceback.format_exc())
+
+except AssertionError as e:
+    print(e)
+    exit(1)
 
 except Exception as e:
-    print("❌ Error loading models:", e)
+    print("❌ Unexpected error:", e)
+    print(traceback.format_exc())
     exit(1)
+
 # ===================== DATABASE CONNECTION (PostgreSQL) =====================
 # Replace with your actual DATABASE_URL or set it as an environment variable in Render.
 DATABASE_URL = os.getenv("DATABASE_URL")
