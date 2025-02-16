@@ -23,6 +23,7 @@ import numpy as np
 import zipfile
 import json
 import psycopg2
+from transformers import BertForSequenceClassification, BertTokenizer
 
 print("Modules imported successfully!")
 
@@ -37,24 +38,29 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 try:
     print("Loading models...")
 
-    # Define paths for model files
+    # Define paths
     zip_path = "models/bert_model.zip"
-    extract_path = "models/"
-    model_path = os.path.join(extract_path, "bert_model.pkl")
+    extract_path = "models/bert_model"
 
-    # Extract bert_model.pkl if not already extracted
-    if not os.path.exists(model_path):
+    # Extract ZIP if not already extracted
+    if not os.path.exists(extract_path):
         print("Extracting bert_model.zip...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_path)
+            zip_ref.extractall("models/")
         print("✅ Model extracted successfully!")
 
-    # Load the vectorizer and BERT model
+    # Load the vectorizer
     vectorizer = pickle.load(open("models/vectorizer.pkl", "rb"))
-    bert_model = pickle.load(open(model_path, "rb"))
+
+    # Load BERT model and tokenizer properly
+    bert_model = BertForSequenceClassification.from_pretrained(extract_path)
+    tokenizer = BertTokenizer.from_pretrained(extract_path)
+
+    # Load spaCy model
     nlp = spacy.load("en_core_web_sm")
 
     print("✅ Models loaded successfully!")
+
 except Exception as e:
     print("❌ Error loading models:", e)
     exit(1)
