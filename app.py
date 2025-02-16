@@ -34,37 +34,15 @@ app.secret_key = "your_secret_key_here"
 UPLOAD_FOLDER = "uploaded_resumes"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# ===================== LOAD MODELS =====================
 try:
     print("Loading models...")
-
-    # Define paths
-    zip_path = "models/bert_model.zip"
-    extract_path = "models/bert_model"
-
-    # Extract ZIP if not already extracted
-    if not os.path.exists(extract_path):
-        print("Extracting bert_model.zip...")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall("models/")
-        print("✅ Model extracted successfully!")
-
-    # Load the vectorizer
     vectorizer = pickle.load(open("models/vectorizer.pkl", "rb"))
-
-    # Load BERT model and tokenizer properly
-    bert_model = BertForSequenceClassification.from_pretrained(extract_path)
-    tokenizer = BertTokenizer.from_pretrained(extract_path)
-
-    # Load spaCy model
+    bert_model = pickle.load(open("models/bert_model.pkl", "rb"))
     nlp = spacy.load("en_core_web_sm")
-
     print("✅ Models loaded successfully!")
-
 except Exception as e:
     print("❌ Error loading models:", e)
     exit(1)
-
 # ===================== DATABASE CONNECTION (PostgreSQL) =====================
 # Replace with your actual DATABASE_URL or set it as an environment variable in Render.
 DATABASE_URL = os.getenv("DATABASE_URL")
