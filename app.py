@@ -24,6 +24,7 @@ import zipfile
 import json
 import psycopg2
 from transformers import BertForSequenceClassification, BertTokenizer
+from joblib import dump,load
 
 print("Modules imported successfully!")
 
@@ -34,12 +35,27 @@ app.secret_key = "your_secret_key_here"
 UPLOAD_FOLDER = "uploaded_resumes"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Get absolute paths
+base_path = os.path.dirname(os.path.abspath(__file__))
+vectorizer_path = os.path.join(base_path, "models", "vectorizer.pkl")
+bert_model_path = os.path.join(base_path, "models", "bert_model.pkl")
+
 try:
     print("Loading models...")
-    vectorizer = pickle.load(open("models/vectorizer.pkl", "rb"))
-    bert_model = pickle.load(open("models/bert_model.pkl", "rb"))
+
+    # Load vectorizer
+    with open(vectorizer_path, "rb") as f:
+        vectorizer = pickle.load(f)
+
+    # Load BERT model from pickle
+    with open(bert_model_path, "rb") as f:
+        bert_model = pickle.load(f)
+
+    # Load spaCy NLP model
     nlp = spacy.load("en_core_web_sm")
+
     print("✅ Models loaded successfully!")
+
 except Exception as e:
     print("❌ Error loading models:", e)
     exit(1)
