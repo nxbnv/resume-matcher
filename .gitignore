@@ -10,5 +10,6 @@ client_secret.json
 token.json  
 
 .venv
-models/bert_model/
+models/bert_model/model.safetensors
+
 
