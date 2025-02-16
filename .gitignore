@@ -8,3 +8,7 @@
  
 client_secret.json  
 token.json  
+
+.venv
+models/bert_model/
+
