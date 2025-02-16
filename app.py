@@ -45,15 +45,23 @@ model_path = "models/bert_model"
 # Ensure 'models' directory exists
 os.makedirs("models", exist_ok=True)
 
-# Load models
-bert_model = BertForSequenceClassification.from_pretrained("bert-base-uncased")
-vectorizer = TfidfVectorizer()  # Modify based on your use case
+# Paths  
+hf_model_name = "rohan57/mymodel"  # Change to your Hugging Face model name  
+vectorizer_path = "models/vectorizer.pkl"
 
-# ✅ Save BERT model correctly
-bert_model.save_pretrained(model_path)  # Saves model in 'models/bert_model' directory
-print(f"✅ BERT model saved to {model_path}!")
+# ✅ Load BERT model from Hugging Face  
+bert_model = BertForSequenceClassification.from_pretrained(hf_model_name)
+print(f"✅ BERT model loaded from {hf_model_name}!")
 
-# ✅ Save vectorizer with pickle
+# Ensure 'models' directory exists  
+os.makedirs("models", exist_ok=True)
+
+# ✅ Save BERT model locally (if needed)
+bert_model.save_pretrained("models/bert_model")  # Saves model as 'models/bert_model'
+print("✅ BERT model saved locally!")
+
+# ✅ Save vectorizer with pickle  
+vectorizer = TfidfVectorizer()  # Modify based on your use case  
 with open(vectorizer_path, "wb") as f:
     pickle.dump(vectorizer, f, protocol=pickle.HIGHEST_PROTOCOL)
 print(f"✅ Vectorizer saved to {vectorizer_path}!")
