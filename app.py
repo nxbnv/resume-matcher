@@ -26,6 +26,8 @@ import psycopg2
 from transformers import BertForSequenceClassification, BertTokenizer
 from joblib import dump,load
 import traceback  # To get detailed error messages
+from transformers import BertForSequenceClassification
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 print("Modules imported successfully!")
 
@@ -36,46 +38,27 @@ app.secret_key = "your_secret_key_here"
 UPLOAD_FOLDER = "uploaded_resumes"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Define paths
+vectorizer_path = "models/vectorizer.pkl"
+model_path = "models/bert_model"
 
+# Ensure 'models' directory exists
+os.makedirs("models", exist_ok=True)
 
-try:
-    print("Loading models...")
+# Load models
+bert_model = BertForSequenceClassification.from_pretrained("bert-base-uncased")
+vectorizer = TfidfVectorizer()  # Modify based on your use case
 
-    vectorizer_path = "models/vectorizer.pkl"
-    model_path = "models/bert_model.pkl"
+# ✅ Save BERT model correctly
+bert_model.save_pretrained(model_path)  # Saves model in 'models/bert_model' directory
+print(f"✅ BERT model saved to {model_path}!")
 
-    # Verify files exist before loading
-    import os
-    assert os.path.exists(vectorizer_path), f"❌ Missing file: {vectorizer_path}"
-    assert os.path.exists(model_path), f"❌ Missing file: {model_path}"
+# ✅ Save vectorizer with pickle
+with open(vectorizer_path, "wb") as f:
+    pickle.dump(vectorizer, f, protocol=pickle.HIGHEST_PROTOCOL)
+print(f"✅ Vectorizer saved to {vectorizer_path}!")
 
-    print("✅ Vectorizer and BERT model found!")
-
-    # Load models with error handling
-    try:
-        with open(vectorizer_path, "rb") as f:
-            vectorizer = pickle.load(f)
-        print("✅ Vectorizer loaded!")
-    except Exception as e:
-        print("❌ Error loading vectorizer:", e)
-        print(traceback.format_exc())
-
-    try:
-        with open(model_path, "rb") as f:
-            bert_model = pickle.load(f)
-        print("✅ BERT model loaded!")
-    except Exception as e:
-        print("❌ Error loading BERT model:", e)
-        print(traceback.format_exc())
-
-except AssertionError as e:
-    print(e)
-    exit(1)
-
-except Exception as e:
-    print("❌ Unexpected error:", e)
-    print(traceback.format_exc())
-    exit(1)
+print("✅ Both models saved successfully!")
 
 # ===================== DATABASE CONNECTION (PostgreSQL) =====================
 # Replace with your actual DATABASE_URL or set it as an environment variable in Render.
