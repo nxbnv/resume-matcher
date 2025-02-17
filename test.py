@@ -1,38 +1,13 @@
-import sqlite3
+from transformers import BertForSequenceClassification, BertTokenizer
+import torch
 
-try:
-    print("🔄 Connecting to SQLite...")
+hf_model_name = "rohan57/mymodel"
+tokenizer = BertTokenizer.from_pretrained(hf_model_name)
+model = BertForSequenceClassification.from_pretrained(hf_model_name)
 
-    # Connect to SQLite (creates 'test_db.sqlite' if it doesn't exist)
-    db = sqlite3.connect("test_db.sqlite")
-    cursor = db.cursor()
+test_text = "This is a sample job description."
+inputs = tokenizer(test_text, return_tensors="pt", truncation=True, padding=True, max_length=512)
 
-    # Create a test table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL
-    )
-    """)
-    db.commit()
-    
-    # Insert test data
-    cursor.execute("INSERT INTO users (name, email) VALUES ('John Doe', 'john@example.com')")
-    db.commit()
-
-    # Fetch and print data
-    cursor.execute("SELECT * FROM users")
-    users = cursor.fetchall()
-
-    print("✅ SQLite Works! Here’s the data:")
-    for user in users:
-        print(user)
-
-except Exception as e:
-    print("❌ SQLite Error:", e)
-
-finally:
-    db.close()
-
-
+with torch.no_grad():
+    outputs = model(**inputs)
+    print("🔍 Model Output:", outputs.logits)

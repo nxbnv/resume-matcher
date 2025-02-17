@@ -26,34 +26,62 @@ import psycopg2
 from transformers import BertForSequenceClassification, BertTokenizer
 from joblib import dump,load
 import traceback  # To get detailed error messages
-from transformers import BertForSequenceClassification
-from sklearn.feature_extraction.text import TfidfVectorizer
 from io import BytesIO
 import requests
+from dotenv import load_dotenv
+import torch
+from sklearn.preprocessing import normalize
 
 print("Modules imported successfully!")
 
 app = Flask(__name__)
 app.secret_key = "your_secret_key_here"
 
+load_dotenv()
+
 # Create Upload Folder for Resumes
 UPLOAD_FOLDER = "uploaded_resumes"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+nlp = spacy.load("en_core_web_sm")
+
 # Define Hugging Face model path
-hf_model_name = "rohan57/mymodel"  # Change to your Hugging Face model name
+hf_model_name = "sentence-transformers/all-MiniLM-L6-v2"  # ✅ Use a SentenceTransformer model
 vectorizer_url = "https://huggingface.co/rohan57/mymodel/resolve/main/vectorizer.pkl"  # URL of the vectorizer file on Hugging Face
 
-# ✅ Load BERT model from Hugging Face
-bert_model = BertForSequenceClassification.from_pretrained(hf_model_name)
-print(f"✅ BERT model loaded from {hf_model_name}!")
+# ✅ Load BERT model (Sentence-BERT)
+try:
+    bert_model = SentenceTransformer(hf_model_name)  # ✅ Correct model type
+    print(f"✅ Sentence-BERT model loaded from {hf_model_name}!")
+except Exception as e:
+    print(f"❌ Error loading BERT model: {e}")
+    exit(1)
 
-# ✅ Load vectorizer with pickle from Hugging Face
-response = requests.get(vectorizer_url)
-vectorizer = pickle.load(BytesIO(response.content))
-print(f"✅ Vectorizer loaded from {vectorizer_url}!")
+# ✅ Load Tokenizer (if needed)
+try:
+    tokenizer = BertTokenizer.from_pretrained(hf_model_name)
+    print(f"✅ Tokenizer loaded from {hf_model_name}!")
+except Exception as e:
+    print(f"❌ Error loading tokenizer: {e}")
 
-print("✅ Both models loaded successfully!")
+# ✅ Download and Load Vectorizer
+try:
+    response = requests.get(vectorizer_url)
+    if response.status_code != 200:
+        raise Exception(f"Failed to download vectorizer (HTTP {response.status_code})")
+
+    # Save the vectorizer file before loading
+    vectorizer_path = "models/vectorizer.pkl"
+    with open(vectorizer_path, "wb") as f:
+        f.write(response.content)
+
+    vectorizer = pickle.load(open(vectorizer_path, "rb"))
+    print(f"✅ Vectorizer loaded successfully from {vectorizer_url}!")
+except Exception as e:
+    print(f"❌ Error loading vectorizer: {e}")
+    exit(1)
+
+print("✅ All models loaded successfully!")
 # ===================== DATABASE CONNECTION (PostgreSQL) =====================
 # Replace with your actual DATABASE_URL or set it as an environment variable in Render.
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -91,12 +119,10 @@ if not client_secret_json:
 client_config = json.loads(client_secret_json)
   # This file should be provided as a secret file in Render
 
-
 token_json = os.getenv("TOKEN_JSON")
 creds = None
 if token_json:
     creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
-
 
 if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
@@ -189,10 +215,15 @@ def extract_text_from_file(file):
 def extract_name(text):
     """Extracts the candidate's name using spaCy's Named Entity Recognition (NER)."""
     doc = nlp(text)
-    for ent in doc.ents:
-        if ent.label_ == "PERSON":
-            return ent.text
-    return None
+    names = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
+    
+    if names:
+        return names[0]  # Return the first detected name
+
+    # Fallback: Try regex-based name extraction (Assumes "Name: XYZ" format)
+    match = re.search(r"(?i)name[:\-]?\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)", text)
+    return match.group(1) if match else "Unknown"
+
 
 def extract_email(text):
     """Extract email from text."""
@@ -203,6 +234,14 @@ def extract_phone_number(text):
     """Extract phone number from text."""
     phones = re.findall(r"\+?\d[\d -]{8,15}\d", text)
     return phones[0] if phones else None
+
+def get_bert_embeddings(text):
+    embeddings = bert_model.encode(text, normalize_embeddings=True)  # ✅ Normalize
+    return embeddings.reshape(1, -1)
+
+
+
+
 
 @app.route("/matcher", methods=["POST"])
 def matcher():
@@ -224,10 +263,12 @@ def matcher():
         email = extract_email(text) or "N/A"
         phone = extract_phone_number(text)
 
-        bert_score = cosine_similarity(
-            [bert_model.encode(job_description)],
-            [bert_model.encode(text)]
-        )[0][0]
+        job_description_embeddings = get_bert_embeddings(job_description)
+        resume_embeddings = get_bert_embeddings(text)  # ✅ Use extracted resume text
+        bert_score = cosine_similarity(job_description_embeddings, resume_embeddings)[0][0]
+        bert_score = max(0.0, min(bert_score, 1.0))  # Clamp values between 0 and 1
+
+
 
         results.append({
             "resume": file.filename,
@@ -291,4 +332,3 @@ def send_selected_emails():
 if __name__ == "__main__":
     print("Starting Flask server...")
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
-
