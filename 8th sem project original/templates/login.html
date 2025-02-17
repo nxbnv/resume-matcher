@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HR Login | Resume Matcher</title>
+    
+    <!-- Bootstrap & Font Awesome -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- jQuery & SweetAlert -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        /* 🔹 Moving Gradient Background */
+        body {
+            background: linear-gradient(-45deg, #1e3c72, #2a5298, #1e90ff, #00c6ff);
+            background-size: 400% 400%;
+            animation: gradientBG 8s ease infinite;
+            color: white;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .form-control {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+        }
+
+        .form-control::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .btn-success {
+            background-color: #00c6ff;
+            border: none;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        .btn-success:hover {
+            background-color: #1e90ff;
+            transform: scale(1.05);
+        }
+
+        .text-center a {
+            color: #00c6ff;
+            font-weight: bold;
+        }
+
+        .text-center a:hover {
+            color: #1e90ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card shadow">
+                    <div class="card-header bg-success text-white text-center">
+                        <h3><i class="fas fa-sign-in-alt"></i> HR Login</h3>
+                    </div>
+                    <div class="card-body">
+                        <form id="login-form">
+                            <div class="form-group">
+                                <label><i class="fas fa-envelope"></i> Email:</label>
+                                <input type="email" class="form-control" name="email" placeholder="Enter your email" required>
+                            </div>
+                            <div class="form-group">
+                                <label><i class="fas fa-lock"></i> Password:</label>
+                                <input type="password" class="form-control" name="password" placeholder="Enter your password" required>
+                            </div>
+                            <button type="submit" class="btn btn-success btn-block"><i class="fas fa-sign-in-alt"></i> Login</button>
+                        </form>
+                        <p class="mt-3 text-center">New here? <a href="/register">Register here</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            $("#login-form").submit(function(event) {
+                event.preventDefault();
+                $.ajax({
+                    type: "POST",
+                    url: "/login",
+                    data: $("#login-form").serialize(),
+                    success: function(response) {
+                        Swal.fire("Success!", "Login successful. Redirecting...", "success").then(() => {
+                            window.location.href = "/index";
+                        });
+                    },
+                    error: function(xhr) {
+                        Swal.fire("Error!", "Invalid email or password.", "error");
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
