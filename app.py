@@ -28,6 +28,8 @@ from joblib import dump,load
 import traceback  # To get detailed error messages
 from transformers import BertForSequenceClassification
 from sklearn.feature_extraction.text import TfidfVectorizer
+from io import BytesIO
+import requests
 
 print("Modules imported successfully!")
 
@@ -38,36 +40,20 @@ app.secret_key = "your_secret_key_here"
 UPLOAD_FOLDER = "uploaded_resumes"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Define paths
-vectorizer_path = "models/vectorizer.pkl"
-model_path = "models/bert_model"
+# Define Hugging Face model path
+hf_model_name = "rohan57/mymodel"  # Change to your Hugging Face model name
+vectorizer_url = "https://huggingface.co/rohan57/mymodel/resolve/main/vectorizer.pkl"  # URL of the vectorizer file on Hugging Face
 
-# Ensure 'models' directory exists
-os.makedirs("models", exist_ok=True)
-
-# Paths  
-hf_model_name = "rohan57/mymodel"  # Change to your Hugging Face model name  
-vectorizer_path = "models/vectorizer.pkl"
-
-# ✅ Load BERT model from Hugging Face  
+# ✅ Load BERT model from Hugging Face
 bert_model = BertForSequenceClassification.from_pretrained(hf_model_name)
 print(f"✅ BERT model loaded from {hf_model_name}!")
 
-# Ensure 'models' directory exists  
-os.makedirs("models", exist_ok=True)
+# ✅ Load vectorizer with pickle from Hugging Face
+response = requests.get(vectorizer_url)
+vectorizer = pickle.load(BytesIO(response.content))
+print(f"✅ Vectorizer loaded from {vectorizer_url}!")
 
-# ✅ Save BERT model locally (if needed)
-bert_model.save_pretrained("models/bert_model")  # Saves model as 'models/bert_model'
-print("✅ BERT model saved locally!")
-
-# ✅ Save vectorizer with pickle  
-vectorizer = TfidfVectorizer()  # Modify based on your use case  
-with open(vectorizer_path, "wb") as f:
-    pickle.dump(vectorizer, f, protocol=pickle.HIGHEST_PROTOCOL)
-print(f"✅ Vectorizer saved to {vectorizer_path}!")
-
-print("✅ Both models saved successfully!")
-
+print("✅ Both models loaded successfully!")
 # ===================== DATABASE CONNECTION (PostgreSQL) =====================
 # Replace with your actual DATABASE_URL or set it as an environment variable in Render.
 DATABASE_URL = os.getenv("DATABASE_URL")
