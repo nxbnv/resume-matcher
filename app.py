@@ -34,54 +34,66 @@ from sklearn.preprocessing import normalize
 
 print("Modules imported successfully!")
 
+# Flask App Setup
 app = Flask(__name__)
-app.secret_key = "your_secret_key_here"
+app.secret_key = os.getenv("SECRET_KEY", "your_secret_key_here")
 
 load_dotenv()
 
-# Create Upload Folder for Resumes
 UPLOAD_FOLDER = "uploaded_resumes"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-nlp = spacy.load("en_core_web_sm")
+# Lazy loading models
+nlp = None
+bert_model = None
 
-# Define Hugging Face model path
-hf_model_name = "sentence-transformers/all-MiniLM-L6-v2"  # ✅ Use a SentenceTransformer model
-vectorizer_url = "https://huggingface.co/rohan57/mymodel/resolve/main/vectorizer.pkl"  # URL of the vectorizer file on Hugging Face
+def load_spacy():
+    global nlp
+    if nlp is None:
+        try:
+            nlp = spacy.load("en_core_web_sm")
+            print("✅ spaCy model loaded successfully!")
+        except Exception as e:
+            print(f"❌ Error loading spaCy: {e}")
+            exit(1)
 
-# ✅ Load BERT model (Sentence-BERT)
-try:
-    bert_model = SentenceTransformer(hf_model_name,device="cpu")  # ✅ Correct model type
-    print(f"✅ Sentence-BERT model loaded from {hf_model_name}!")
-except Exception as e:
-    print(f"❌ Error loading BERT model: {e}")
-    exit(1)
+def load_bert():
+    global bert_model
+    if bert_model is None:
+        try:
+            bert_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device="cpu")
+            print("✅ BERT model loaded successfully!")
+        except Exception as e:
+            print(f"❌ Error loading BERT: {e}")
+            exit(1)
 
-# ✅ Load Tokenizer (if needed)
-try:
-    tokenizer = BertTokenizer.from_pretrained(hf_model_name)
-    print(f"✅ Tokenizer loaded from {hf_model_name}!")
-except Exception as e:
-    print(f"❌ Error loading tokenizer: {e}")
+# Vectorizer Management (Download once and cache)
+vectorizer_path = "models/vectorizer.pkl"
+vectorizer_url = "https://huggingface.co/rohan57/mymodel/resolve/main/vectorizer.pkl"
 
-# ✅ Download and Load Vectorizer
-try:
-    response = requests.get(vectorizer_url)
-    if response.status_code != 200:
-        raise Exception(f"Failed to download vectorizer (HTTP {response.status_code})")
+def load_vectorizer():
+    if not os.path.exists(vectorizer_path):
+        try:
+            print("Downloading vectorizer...")
+            response = requests.get(vectorizer_url)
+            response.raise_for_status()
+            with open(vectorizer_path, "wb") as f:
+                f.write(response.content)
+            print("✅ Vectorizer downloaded!")
+        except Exception as e:
+            print(f"❌ Error downloading vectorizer: {e}")
+            exit(1)
+    try:
+        with open(vectorizer_path, "rb") as f:
+            return pickle.load(f)
+    except Exception as e:
+        print(f"❌ Error loading vectorizer: {e}")
+        exit(1)
 
-    # Save the vectorizer file before loading
-    vectorizer_path = "models/vectorizer.pkl"
-    with open(vectorizer_path, "wb") as f:
-        f.write(response.content)
+vectorizer = load_vectorizer()
 
-    vectorizer = pickle.load(open(vectorizer_path, "rb"))
-    print(f"✅ Vectorizer loaded successfully from {vectorizer_url}!")
-except Exception as e:
-    print(f"❌ Error loading vectorizer: {e}")
-    exit(1)
+print("✅ All models ready for use!")
 
-print("✅ All models loaded successfully!")
 # ===================== DATABASE CONNECTION (PostgreSQL) =====================
 # Replace with your actual DATABASE_URL or set it as an environment variable in Render.
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -213,6 +225,7 @@ def extract_text_from_file(file):
     return text
 
 def extract_name(text):
+    load_spacy()  # ✅ Ensure spaCy is loaded before using it
     """Extracts the candidate's name using spaCy's Named Entity Recognition (NER)."""
     doc = nlp(text)
     names = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
@@ -225,21 +238,25 @@ def extract_name(text):
     return match.group(1) if match else "Unknown"
 
 
+def get_bert_embeddings(text):
+    """Generate sentence embeddings using SentenceTransformer."""
+    load_bert()  # ✅ Ensure BERT model is loaded before using it
+
+    truncated_text = text[:512]  # ✅ Process only first 512 characters to save RAM
+    embeddings = bert_model.encode(truncated_text, normalize_embeddings=True)
+    return embeddings.reshape(1, -1)  # ✅ Ensure 2D array for cosine similarity
+
+
 def extract_email(text):
     """Extract email from text."""
     emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)
     return emails[0] if emails else None
 
+
 def extract_phone_number(text):
     """Extract phone number from text."""
     phones = re.findall(r"\+?\d[\d -]{8,15}\d", text)
     return phones[0] if phones else None
-
-def get_bert_embeddings(text):
-    truncated_text = text[:512]  # ✅ Process only first 512 characters to save RAM
-    embeddings = bert_model.encode(truncated_text, normalize_embeddings=True)
-    return embeddings.reshape(1, -1)
-
 
 @app.route("/matcher", methods=["POST"])
 def matcher():
