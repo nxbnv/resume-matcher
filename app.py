@@ -31,6 +31,7 @@ import requests
 from dotenv import load_dotenv
 import torch
 from sklearn.preprocessing import normalize
+import base64
 
 print("Modules imported successfully!")
 
@@ -123,28 +124,41 @@ conn.commit()
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 print("Authenticating Gmail API...")
 
-client_secret_json = os.getenv("CLIENT_SECRET_JSON")
-if not client_secret_json:
-    raise ValueError("❌ Missing CLIENT_SECRET_JSON environment variable!")
-client_config = json.loads(client_secret_json)
-  # This file should be provided as a secret file in Render
+# Helper function to decode Base64 safely
+def decode_base64_env(var_name):
+    encoded_value = os.getenv(var_name)
+    if not encoded_value:
+        raise ValueError(f"❌ Missing {var_name} environment variable!")
+    try:
+        return json.loads(base64.b64decode(encoded_value).decode("utf-8"))
+    except Exception as e:
+        raise ValueError(f"❌ Error decoding {var_name}: {e}")
 
-token_json = os.getenv("TOKEN_JSON")
+# Decode client secret and token from Base64
+client_config = decode_base64_env("CLIENT_SECRET_JSON_B64")
+
 creds = None
-if token_json:
-    creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
+try:
+    token_data = os.getenv("TOKEN_JSON_B64")
+    if token_data:
+        creds = Credentials.from_authorized_user_info(json.loads(base64.b64decode(token_data).decode("utf-8")), SCOPES)
+except Exception as e:
+    print(f"⚠️ Error loading token: {e}")
 
+# Authenticate if credentials are missing or invalid
 if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
     else:
         flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
         creds = flow.run_local_server(port=5500)
-    with open("token.json", "w") as token:
-        token.write(creds.to_json())
 
+    # Save refreshed credentials as token.json for reuse
+    with open("token.json", "w") as token_file:
+        token_file.write(creds.to_json())
+        
 service = build("gmail", "v1", credentials=creds)
-print("✅ Gmail API authenticated!")
+print("✅ Gmail API authentication successful!")
 
 # ===================== HR REGISTRATION & LOGIN =====================
 @app.route("/")
