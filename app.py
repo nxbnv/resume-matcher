@@ -51,7 +51,7 @@ vectorizer_url = "https://huggingface.co/rohan57/mymodel/resolve/main/vectorizer
 
 # ✅ Load BERT model (Sentence-BERT)
 try:
-    bert_model = SentenceTransformer(hf_model_name)  # ✅ Correct model type
+    bert_model = SentenceTransformer(hf_model_name,device="cpu")  # ✅ Correct model type
     print(f"✅ Sentence-BERT model loaded from {hf_model_name}!")
 except Exception as e:
     print(f"❌ Error loading BERT model: {e}")
@@ -236,11 +236,9 @@ def extract_phone_number(text):
     return phones[0] if phones else None
 
 def get_bert_embeddings(text):
-    embeddings = bert_model.encode(text, normalize_embeddings=True)  # ✅ Normalize
+    truncated_text = text[:512]  # ✅ Process only first 512 characters to save RAM
+    embeddings = bert_model.encode(truncated_text, normalize_embeddings=True)
     return embeddings.reshape(1, -1)
-
-
-
 
 
 @app.route("/matcher", methods=["POST"])
