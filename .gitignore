@@ -1,15 +1,18 @@
+```gitignore
+# Ignore zip files
+*.zip
 
- 
- 
+# Ignore pickle files
+*.pkl
 
- 
- t o k e n . j s o n 
- 
- 
-client_secret.json  
-token.json  
+# Ignore sensitive files
+client_secret.json
+tmp/database.db
+token.json
 
-.venv
-models/bert_model/model.safetensors
+# Ignore other common files
+.DS_Store
+Thumbs.db
+```
 
 
