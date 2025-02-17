@@ -72,20 +72,18 @@ vectorizer_path = "models/vectorizer.pkl"
 vectorizer_url = "https://huggingface.co/rohan57/mymodel/resolve/main/vectorizer.pkl"
 
 def load_vectorizer():
-    if not os.path.exists(vectorizer_path):
-        try:
-            print("Downloading vectorizer...")
-            response = requests.get(vectorizer_url)
-            response.raise_for_status()
-            with open(vectorizer_path, "wb") as f:
-                f.write(response.content)
-            print("✅ Vectorizer downloaded!")
-        except Exception as e:
-            print(f"❌ Error downloading vectorizer: {e}")
-            exit(1)
+    """Loads vectorizer.pkl directly from Hugging Face into memory."""
     try:
-        with open(vectorizer_path, "rb") as f:
-            return pickle.load(f)
+        print(f"🌍 Downloading vectorizer directly from {vectorizer_url}...")
+        response = requests.get(vectorizer_url, timeout=15)
+        response.raise_for_status()  # ✅ Raise error if download fails
+        
+        vectorizer = pickle.load(BytesIO(response.content))  # ✅ Load directly from memory
+        print("✅ Vectorizer loaded successfully from Hugging Face!")
+        return vectorizer
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Network error while downloading vectorizer: {e}")
+        exit(1)
     except Exception as e:
         print(f"❌ Error loading vectorizer: {e}")
         exit(1)
