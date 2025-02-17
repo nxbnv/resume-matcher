@@ -156,7 +156,7 @@ if not creds or not creds.valid:
     # Save refreshed credentials as token.json for reuse
     with open("token.json", "w") as token_file:
         token_file.write(creds.to_json())
-        
+
 service = build("gmail", "v1", credentials=creds)
 print("✅ Gmail API authentication successful!")
 
@@ -275,7 +275,7 @@ def matcher():
     """Matches resumes with job description and saves them."""
     if "user_email" not in session:
         return jsonify({"error": "User not logged in"}), 401
-
+    print("inside matcher")
     job_description = request.form.get("job_description")
     uploaded_files = request.files.getlist("resumes")
     score_threshold = float(request.form.get("score_threshold"))
@@ -313,6 +313,7 @@ def matcher():
 
 @app.route("/download-excel", methods=["GET"])
 def download_excel():
+    print("inside excel")
     """Generate and return an Excel file with clickable resume links."""
     if "user_email" not in session:
         return jsonify({"error": "User not logged in"}), 401
@@ -343,6 +344,7 @@ def send_email(service, sender_name, sender_company, sender_email, recipient_ema
 
 @app.route("/send-email", methods=["POST"])
 def send_selected_emails():
+    print("inside selected mails")
     if "user_email" not in session:
         return jsonify({"error": "User not logged in"}), 401
 
@@ -357,5 +359,6 @@ def send_selected_emails():
     return jsonify({"message": "Emails sent successfully!"})
 
 if __name__ == "__main__":
-    print("Starting Flask server...")
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    port = int(os.getenv("PORT", 10000))  # Use Render's port
+    print(f"🚀 Running Flask on port {port}...")
+    app.run(host="0.0.0.0", port=port)
