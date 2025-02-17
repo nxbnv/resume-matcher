@@ -15,4 +15,7 @@ token.json
 Thumbs.db
 ```
 
+//ignore .env files
+*.env
+
 
