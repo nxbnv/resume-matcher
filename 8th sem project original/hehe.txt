@@ -1,2 +1,0 @@
-INSERT INTO hr (name, email, password) VALUES 
-('Rohan Hota', 'rohanhota0@gmail.com', '123');
