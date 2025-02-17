@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS hr (
 )
 """)
 conn.commit()
-
+#good
 # ===================== GMAIL API AUTHENTICATION =====================
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 print("Authenticating Gmail API...")
