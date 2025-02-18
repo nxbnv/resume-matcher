@@ -41,8 +41,11 @@ app.secret_key = os.getenv("SECRET_KEY", "your_secret_key_here")
 
 load_dotenv()
 
-UPLOAD_FOLDER = "uploaded_resumes"
+
+UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploaded_resumes")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
 
 # Lazy loading models
 nlp = None
@@ -275,41 +278,80 @@ def matcher():
     """Matches resumes with job description and saves them."""
     if "user_email" not in session:
         return jsonify({"error": "User not logged in"}), 401
+    
     print("inside matcher")
+    
     job_description = request.form.get("job_description")
-    uploaded_files = request.files.getlist("resumes")
     score_threshold = float(request.form.get("score_threshold"))
 
+    if not job_description:
+        return jsonify({"error": "Job description is required"}), 400
+    
+    if score_threshold < 0 or score_threshold > 1:
+        return jsonify({"error": "Score threshold must be between 0 and 1"}), 400
+
+    uploaded_files = request.files.getlist("resumes")
+    
+    if not uploaded_files:
+        return jsonify({"error": "No files uploaded"}), 400
+
     results = []
+    
+    # Iterate over uploaded files
     for file in uploaded_files:
-        file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(file_path)  # Save file in upload folder
+        if file and file.filename:  # Check if file is valid
+            try:
+                # Ensure the file path is safe
+                file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+                os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Make sure the folder exists
 
-        text = extract_text_from_file(file)
-        name = extract_name(text) or "Unknown"
-        email = extract_email(text) or "N/A"
-        phone = extract_phone_number(text)
+                # Save the uploaded file
+                file.save(file_path)
+                print(f"Saved file: {file.filename}")
 
-        job_description_embeddings = get_bert_embeddings(job_description)
-        resume_embeddings = get_bert_embeddings(text)  # ✅ Use extracted resume text
-        bert_score = cosine_similarity(job_description_embeddings, resume_embeddings)[0][0]
-        bert_score = max(0.0, min(bert_score, 1.0))  # Clamp values between 0 and 1
+                # Extract text from the resume
+                text = extract_text_from_file(file)
+                if not text:
+                    raise ValueError(f"Could not extract text from {file.filename}")
 
+                # Extract additional information from the resume
+                name = extract_name(text) or "Unknown"
+                email = extract_email(text) or "N/A"
+                phone = extract_phone_number(text) or "N/A"
 
+                # Get embeddings for job description and resume
+                job_description_embeddings = get_bert_embeddings(job_description)
+                resume_embeddings = get_bert_embeddings(text)
 
-        results.append({
-            "resume": file.filename,
-            "name": name,
-            "email": email,
-            "phone": phone,
-            "bert_score": round(float(bert_score), 2),
-            "resume_link": f'=HYPERLINK("{os.path.abspath(file_path)}", "Open Resume")'
-        })
+                # Calculate cosine similarity score between job description and resume
+                bert_score = cosine_similarity(job_description_embeddings, resume_embeddings)[0][0]
+                bert_score = max(0.0, min(bert_score, 1.0))  # Clamp between 0 and 1
 
+                results.append({
+                    "resume": file.filename,
+                    "name": name,
+                    "email": email,
+                    "phone": phone,
+                    "bert_score": round(float(bert_score), 2),
+                    "resume_link": f'=HYPERLINK("{os.path.abspath(file_path)}", "Open Resume")'
+                })
+            except Exception as e:
+                print(f"Error processing file {file.filename}: {e}")
+                continue  # Skip this file if an error occurred
+
+    # Filter out candidates with low similarity score
     selected_candidates = [res for res in results if res["bert_score"] >= score_threshold]
     session["selected_candidates"] = selected_candidates
 
-    return jsonify({"selected_candidates": selected_candidates, "scores": results})
+    if not selected_candidates:
+        return jsonify({"error": "No candidates matched with the job description"}), 404
+
+    return jsonify({
+        "selected_candidates": selected_candidates,
+        "scores": results
+    })
+
+
 
 @app.route("/download-excel", methods=["GET"])
 def download_excel():
