@@ -32,6 +32,8 @@ from dotenv import load_dotenv
 import torch
 from sklearn.preprocessing import normalize
 import base64
+import gc  # ✅ Garbage Collection
+import time  # ✅ Performance tracking
 
 print("Modules imported successfully!")
 
@@ -223,21 +225,36 @@ def index():
     return render_template("index.html", hr_name=session["hr_name"], hr_company=session["hr_company"])
 
 # ===================== RESUME MATCHING & PROCESSING =====================
-def extract_text_from_file(file):
+def extract_text_from_file(file_path, file):
     """Extract text from different file formats."""
     text = ""
-    filename = file.filename
+
+    filename = os.path.basename(file_path)  # ✅ Get filename from file_path
+
     if filename.endswith(".txt"):
         text = file.read().decode("utf-8")
+
     elif filename.endswith(".pdf"):
-        reader = PyPDF2.PdfReader(file)
-        text = " ".join([page.extract_text() for page in reader.pages if page.extract_text()])
+        try:
+            reader = PyPDF2.PdfReader(file)
+            text = " ".join([page.extract_text() for page in reader.pages if page.extract_text()])
+        except Exception as e:
+            print(f"⚠️ PyPDF2 failed: {e}")
+
+        # If no text is extracted, try OCR
+        if not text.strip():
+            print(f"🔄 Using OCR for {filename}...")
+            text = pytesseract.image_to_string(Image.open(file_path))
+
     elif filename.endswith(".docx"):
-        doc = docx.Document(file)
+        doc = docx.Document(file_path)  # ✅ Open with filename
         text = " ".join([para.text for para in doc.paragraphs])
+
     elif filename.endswith((".png", ".jpg", ".jpeg")):
-        text = pytesseract.image_to_string(Image.open(file))
+        text = pytesseract.image_to_string(Image.open(file_path))
+
     return text
+
 
 def extract_name(text):
     load_spacy()  # ✅ Ensure spaCy is loaded before using it
@@ -273,21 +290,23 @@ def extract_phone_number(text):
     phones = re.findall(r"\+?\d[\d -]{8,15}\d", text)
     return phones[0] if phones else None
 
+
 @app.route("/matcher", methods=["POST"])
 def matcher():
-    """Matches resumes with job description and saves them."""
+    """Matches resumes with job description while optimizing memory usage."""
     if "user_email" not in session:
         return jsonify({"error": "User not logged in"}), 401
-    
+
     print("inside matcher")
-    
+    start_time = time.time()
+
     job_description = request.form.get("job_description")
     score_threshold = float(request.form.get("score_threshold"))
 
     if not job_description:
         return jsonify({"error": "Job description is required"}), 400
-    
-    if score_threshold < 0 or score_threshold > 1:
+
+    if not (0 <= score_threshold <= 1):
         return jsonify({"error": "Score threshold must be between 0 and 1"}), 400
 
     uploaded_files = request.files.getlist("resumes")
@@ -295,62 +314,72 @@ def matcher():
     if not uploaded_files:
         return jsonify({"error": "No files uploaded"}), 400
 
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Ensure upload folder exists
+
+    # ✅ Compute job description embeddings **only once**
+    job_description_embeddings = get_bert_embeddings(job_description)
+
     results = []
-    
-    # Iterate over uploaded files
     for file in uploaded_files:
-        if file and file.filename:  # Check if file is valid
+        if file and file.filename:
             try:
-                # Ensure the file path is safe
-                file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-                os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Make sure the folder exists
+                resume_filename = file.filename  
+                file_path = os.path.join(UPLOAD_FOLDER, resume_filename)
 
-                # Save the uploaded file
+                # ✅ Stream file to disk (Avoids keeping large files in RAM)
                 file.save(file_path)
-                print(f"Saved file: {file.filename}")
+                print(f"✅ Saved file: {resume_filename}")
 
-                # Extract text from the resume
-                text = extract_text_from_file(file)
-                if not text:
-                    raise ValueError(f"Could not extract text from {file.filename}")
+                # ✅ Open file and read in small chunks
+                with open(file_path, "rb") as f:
+                    text = extract_text_from_file(file_path, f)  
 
-                # Extract additional information from the resume
+                if not text.strip():
+                    print(f"⚠️ Skipping {resume_filename}: No text extracted")
+                    os.remove(file_path)
+                    continue  
+
+                # ✅ Extract details
                 name = extract_name(text) or "Unknown"
                 email = extract_email(text) or "N/A"
                 phone = extract_phone_number(text) or "N/A"
 
-                # Get embeddings for job description and resume
-                job_description_embeddings = get_bert_embeddings(job_description)
+                # ✅ Compute embeddings efficiently
                 resume_embeddings = get_bert_embeddings(text)
 
-                # Calculate cosine similarity score between job description and resume
+                # ✅ Compute cosine similarity
                 bert_score = cosine_similarity(job_description_embeddings, resume_embeddings)[0][0]
-                bert_score = max(0.0, min(bert_score, 1.0))  # Clamp between 0 and 1
+                bert_score = max(0.0, min(bert_score, 1.0))
 
+                # ✅ Save results **without keeping large objects in memory**
                 results.append({
-                    "resume": file.filename,
+                    "resume": resume_filename,
                     "name": name,
                     "email": email,
                     "phone": phone,
                     "bert_score": round(float(bert_score), 2),
                     "resume_link": f'=HYPERLINK("{os.path.abspath(file_path)}", "Open Resume")'
                 })
-            except Exception as e:
-                print(f"Error processing file {file.filename}: {e}")
-                continue  # Skip this file if an error occurred
 
-    # Filter out candidates with low similarity score
+                # ✅ Immediately delete the file to free disk/memory
+                os.remove(file_path)
+                del text, resume_embeddings  # ✅ Free memory for next file
+                gc.collect()  # ✅ Force garbage collection
+
+            except Exception as e:
+                print(f"❌ Error processing file {resume_filename}: {e}")
+                continue  
+
+    # ✅ Only keep selected candidates to reduce response size
     selected_candidates = [res for res in results if res["bert_score"] >= score_threshold]
     session["selected_candidates"] = selected_candidates
+
+    print(f"✅ Matching completed in {round(time.time() - start_time, 2)} seconds.")
 
     if not selected_candidates:
         return jsonify({"error": "No candidates matched with the job description"}), 404
 
-    return jsonify({
-        "selected_candidates": selected_candidates,
-        "scores": results
-    })
-
+    return jsonify({"selected_candidates": selected_candidates, "scores": results})
 
 
 @app.route("/download-excel", methods=["GET"])
