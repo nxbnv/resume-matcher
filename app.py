@@ -34,6 +34,8 @@ from sklearn.preprocessing import normalize
 import base64
 import gc  # ✅ Garbage Collection
 import time  # ✅ Performance tracking
+import subprocess
+import platform 
 
 print("Modules imported successfully!")
 
@@ -67,7 +69,7 @@ def load_bert():
     global bert_model
     if bert_model is None:
         try:
-            bert_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device="cpu")
+            bert_model = SentenceTransformer("sentence-transformers/paraphrase-MiniLM-L3-v2", device="cpu")
             print("✅ BERT model loaded successfully!")
         except Exception as e:
             print(f"❌ Error loading BERT: {e}")
@@ -290,7 +292,30 @@ def extract_phone_number(text):
     phones = re.findall(r"\+?\d[\d -]{8,15}\d", text)
     return phones[0] if phones else None
 
+def enable_swap():
+    """Enable swap memory on Render (Linux only)."""
+    if platform.system() == "Windows":
+        print("⚠️ Swap memory setup skipped on Windows (Not supported).")
+        return
 
+    try:
+        # Check if swap is already enabled
+        result = subprocess.run(["swapon", "--show"], capture_output=True, text=True)
+        if "swapfile" in result.stdout:
+            print("✅ Swap memory is already enabled.")
+            return
+        
+        print("🔄 Enabling Swap (512MB)...")
+        os.system("fallocate -l 512M /swapfile")  # Create swap file
+        os.system("chmod 600 /swapfile")
+        os.system("mkswap /swapfile")
+        os.system("swapon /swapfile")
+        print("✅ Swap memory enabled successfully!")
+
+    except Exception as e:
+        print(f"⚠️ Error enabling swap: {e}")
+
+        
 @app.route("/matcher", methods=["POST"])
 def matcher():
     """Matches resumes with job description while optimizing memory usage."""
@@ -299,6 +324,9 @@ def matcher():
 
     print("inside matcher")
     start_time = time.time()
+
+    # ✅ Enable swap before processing resumes
+    enable_swap()
 
     job_description = request.form.get("job_description")
     score_threshold = float(request.form.get("score_threshold"))
