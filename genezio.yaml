@@ -1,5 +1,3 @@
-runtime: python@3.12.1  # ✅ Match with your `python-version` file
-
 backend:
     functions:
         - entry: app.py
@@ -10,10 +8,9 @@ backend:
     language:
         name: python
         packageManager: pip
-        runtime: python3.12.1  # ✅ Ensure this matches
+        runtime: python3.12.1
     path: .
 name: resume-matcher
 region: eu-central-1
+runtime: python@3.12.1
 yamlVersion: 2
-
-
