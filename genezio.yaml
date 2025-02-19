@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+runtime: python@3.12  # ✅ Match with your `python-version` file
+
+>>>>>>> 0e8566f (gene)
 backend:
     functions:
         - entry: app.py
@@ -8,7 +13,11 @@ backend:
     language:
         name: python
         packageManager: pip
+<<<<<<< HEAD
         runtime: python3.12.1
+=======
+        runtime: python3.12.x  # ✅ Ensure this matches
+>>>>>>> 0e8566f (gene)
     path: .
 name: resume-matcher
 region: eu-central-1
