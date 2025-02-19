@@ -1,8 +1,5 @@
-<<<<<<< HEAD
-=======
-runtime: python@3.12  # ✅ Match with the correct Python version supported by Genezio
+runtime: python@3.12  # ✅ Change this to the desired version
 
->>>>>>> a556861 (did)
 backend:
     functions:
         - entry: app.py
@@ -13,13 +10,10 @@ backend:
     language:
         name: python
         packageManager: pip
-<<<<<<< HEAD
-        runtime: python3.11.x
-=======
-        runtime: python3.12.x  # ✅ Use a supported Python version
->>>>>>> a556861 (did)
+        runtime: python3.12.x  # ✅ Match Genezio's format
     path: .
+    
 name: resume-matcher
 region: eu-central-1
-runtime: python@3.11
 yamlVersion: 2
+
