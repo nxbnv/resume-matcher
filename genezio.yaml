@@ -1,5 +1,3 @@
-runtime: python@3.12  # ✅ Change this to the desired version
-
 backend:
     functions:
         - entry: app.py
@@ -10,10 +8,9 @@ backend:
     language:
         name: python
         packageManager: pip
-        runtime: python3.12.x  # ✅ Match Genezio's format
+        runtime: python3.12.x
     path: .
-    
 name: resume-matcher
 region: eu-central-1
+runtime: python@3.12
 yamlVersion: 2
-
