@@ -1,0 +1,15 @@
+backend:
+    functions:
+        - entry: app.py
+          handler: handler
+          name: serverless
+          path: .
+          type: aws
+    language:
+        name: python
+        packageManager: pip
+        runtime: python3.13.x
+    path: .
+name: resume-matcher
+region: eu-central-1
+yamlVersion: 2
