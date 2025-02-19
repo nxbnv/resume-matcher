@@ -15,22 +15,22 @@ from googleapiclient.discovery import build
 from email.mime.text import MIMEText
 from PIL import Image
 from sentence_transformers import SentenceTransformer
-from sklearn.feature_extraction.text import TfidfVectorizer
+#from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import spacy
 import re
-import numpy as np
-import zipfile
+#import numpy as np
+#import zipfile
 import json
 import psycopg2
-from transformers import BertForSequenceClassification, BertTokenizer
-from joblib import dump,load
-import traceback  # To get detailed error messages
+#from transformers import BertForSequenceClassification, BertTokenizer
+#from joblib import dump,load
+#import traceback  # To get detailed error messages
 from io import BytesIO
 import requests
 from dotenv import load_dotenv
 import torch
-from sklearn.preprocessing import normalize
+#from sklearn.preprocessing import normalize
 import base64
 import gc  # ✅ Garbage Collection
 import time  # ✅ Performance tracking
