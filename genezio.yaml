@@ -1,25 +1,19 @@
-<<<<<<< HEAD
-=======
-runtime: python@3.12  # ✅ Match with your `python-version` file
+runtime: python@3.12  # ✅ Match with the correct Python version supported by Genezio
 
->>>>>>> 0e8566f (gene)
 backend:
     functions:
-        - entry: app.py
-          handler: app
+        - entry: app.py  # ✅ Your main Python file
+          handler: app  # ✅ Ensure this matches your Flask instance (e.g., app = Flask(__name__))
           name: serverless
           path: .
           type: aws
     language:
         name: python
         packageManager: pip
-<<<<<<< HEAD
-        runtime: python3.12.1
-=======
-        runtime: python3.12.x  # ✅ Ensure this matches
->>>>>>> 0e8566f (gene)
+        runtime: python3.12.x  # ✅ Use a supported Python version
     path: .
-name: resume-matcher
-region: eu-central-1
-runtime: python@3.12.1
+    
+name: resume-matcher  # ✅ Your project name
+region: eu-central-1  # ✅ Change if needed
 yamlVersion: 2
+
