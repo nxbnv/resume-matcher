@@ -75,6 +75,8 @@ def load_bert():
             print(f"❌ Error loading BERT: {e}")
             exit(1)
 
+#paraphrase-MiniLM-L3-v2
+
 # Vectorizer Management (Download once and cache)
 vectorizer_path = "models/vectorizer.pkl"
 vectorizer_url = "https://huggingface.co/rohan57/mymodel/resolve/main/vectorizer.pkl"
@@ -458,6 +460,6 @@ def send_selected_emails():
     return jsonify({"message": "Emails sent successfully!"})
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 10000))  # Use Render's port
+    port = int(os.getenv("PORT", 5000))  # Use Render's port
     print(f"🚀 Running Flask on port {port}...")
     app.run(host="0.0.0.0", port=port)

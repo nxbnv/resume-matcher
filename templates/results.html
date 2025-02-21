@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Resume Matching Results</title>
+  </head>
+  <body>
+    <h1>Resume Matching Results</h1>
+    <table>
+      <thead>
+        <tr>
+          <th>Candidate Name</th>
+          <th>Resume Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for candidate in selected_candidates %}
+        <tr>
+          <td>{{ candidate.name }}</td>
+          <td>{{ candidate.bert_score }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </body>
+</html>
