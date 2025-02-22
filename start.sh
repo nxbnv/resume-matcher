@@ -7,5 +7,6 @@ mkswap /swapfile
 swapon /swapfile
 echo "✅ Swap memory enabled!"
 
-# Start your application
-gunicorn app:app
+# Start Flask app with Gunicorn
+gunicorn app:app --bind 0.0.0.0:10000 --workers=2
+
