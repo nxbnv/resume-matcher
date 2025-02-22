@@ -485,6 +485,6 @@ def send_selected_emails():
     return jsonify({"message": "Emails sent successfully!"}), 200
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))  # Use Render's port
+    port = int(os.getenv("PORT", 10000))  # Use Render's port
     print(f"🚀 Running Flask on port {port}...")
     app.run(host="0.0.0.0", port=port)
