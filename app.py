@@ -15,41 +15,34 @@ from googleapiclient.discovery import build
 from email.mime.text import MIMEText
 from PIL import Image
 from sentence_transformers import SentenceTransformer
-#from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+#from sklearn.metrics.pairwise import cosine_similarity
 import spacy
 import re
-#import numpy as np
-#import zipfile
 import json
 import psycopg2
-#from transformers import BertForSequenceClassification, BertTokenizer
-#from joblib import dump,load
-#import traceback  # To get detailed error messages
 from io import BytesIO
 import requests
 from dotenv import load_dotenv
-import torch
-#from sklearn.preprocessing import normalize
+#import torch
 import base64
-import gc  # ✅ Garbage Collection
-import time  # ✅ Performance tracking
 import subprocess
 import platform 
+from celery.result import AsyncResult
+from celery_config import celery
+import tasks
+from datetime import datetime
 
 print("Modules imported successfully!")
 
-# Flask App Setup
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "your_secret_key_here")
+#app.secret_key = os.getenv("SECRET_KEY", "your_secret_key_here")
+app.secret_key="your_secret"
+app.config["SESSION_TYPE"] = "filesystem"
 
 load_dotenv()
 
-
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploaded_resumes")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-
 
 # Lazy loading models
 nlp = None
@@ -316,118 +309,137 @@ def enable_swap():
 
     except Exception as e:
         print(f"⚠️ Error enabling swap: {e}")
-
-        
+     
 @app.route("/matcher", methods=["POST"])
 def matcher():
-    """Matches resumes with job description while optimizing memory usage."""
+    """Start the resume matching task in Celery."""
     if "user_email" not in session:
         return jsonify({"error": "User not logged in"}), 401
 
-    print("inside matcher")
-    start_time = time.time()
-
-    # ✅ Enable swap before processing resumes
-    enable_swap()
+    print("✅ Received resume matching request...")
 
     job_description = request.form.get("job_description")
     score_threshold = float(request.form.get("score_threshold"))
-
-    if not job_description:
-        return jsonify({"error": "Job description is required"}), 400
-
-    if not (0 <= score_threshold <= 1):
-        return jsonify({"error": "Score threshold must be between 0 and 1"}), 400
-
     uploaded_files = request.files.getlist("resumes")
-    
-    if not uploaded_files:
-        return jsonify({"error": "No files uploaded"}), 400
 
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Ensure upload folder exists
+    if not job_description or not uploaded_files:
+        return jsonify({"error": "Job description and resumes are required"}), 400
 
-    # ✅ Compute job description embeddings **only once**
-    job_description_embeddings = get_bert_embeddings(job_description)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-    results = []
+    resumes = []
     for file in uploaded_files:
-        if file and file.filename:
-            try:
-                resume_filename = file.filename  
-                file_path = os.path.join(UPLOAD_FOLDER, resume_filename)
+        file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(file_path)
+        resumes.append({
+            "filename": file.filename,
+            "file_path": os.path.join(UPLOAD_FOLDER, file.filename)  # ✅ Add full file path
+        })
 
-                # ✅ Stream file to disk (Avoids keeping large files in RAM)
-                file.save(file_path)
-                print(f"✅ Saved file: {resume_filename}")
+    # ✅ Send task to Celery worker
+    task = tasks.match_resumes.apply_async(args=[job_description, resumes, score_threshold])
 
-                # ✅ Open file and read in small chunks
-                with open(file_path, "rb") as f:
-                    text = extract_text_from_file(file_path, f)  
+    return jsonify({"task_id": task.id, "message": "Matching task started!"}), 202
 
-                if not text.strip():
-                    print(f"⚠️ Skipping {resume_filename}: No text extracted")
-                    os.remove(file_path)
-                    continue  
+@app.route("/task-status/<task_id>", methods=["GET"])
+def task_status(task_id):
+    """Check the status of a Celery task."""
+    task = AsyncResult(task_id,app=celery)
 
-                # ✅ Extract details
-                name = extract_name(text) or "Unknown"
-                email = extract_email(text) or "N/A"
-                phone = extract_phone_number(text) or "N/A"
+    if task.state == "PENDING":
+        response = {"status": "Processing", "message": "Task is still running"}
+    elif task.state == "SUCCESS":
+        response = {"status": "Completed", "result": task.result}
+    elif task.state == "FAILURE":
+        response = {"status": "Failed", "error": str(task.info)}
+    else:
+        response = {"status": task.state, "message": "Unknown state"}
 
-                # ✅ Compute embeddings efficiently
-                resume_embeddings = get_bert_embeddings(text)
-
-                # ✅ Compute cosine similarity
-                bert_score = cosine_similarity(job_description_embeddings, resume_embeddings)[0][0]
-                bert_score = max(0.0, min(bert_score, 1.0))
-
-                # ✅ Save results **without keeping large objects in memory**
-                results.append({
-                    "resume": resume_filename,
-                    "name": name,
-                    "email": email,
-                    "phone": phone,
-                    "bert_score": round(float(bert_score), 2),
-                    "resume_link": f'=HYPERLINK("{os.path.abspath(file_path)}", "Open Resume")'
-                })
-
-                # ✅ Immediately delete the file to free disk/memory
-                os.remove(file_path)
-                del text, resume_embeddings  # ✅ Free memory for next file
-                gc.collect()  # ✅ Force garbage collection
-
-            except Exception as e:
-                print(f"❌ Error processing file {resume_filename}: {e}")
-                continue  
-
-    # ✅ Only keep selected candidates to reduce response size
-    selected_candidates = [res for res in results if res["bert_score"] >= score_threshold]
-    session["selected_candidates"] = selected_candidates
-
-    print(f"✅ Matching completed in {round(time.time() - start_time, 2)} seconds.")
-
-    if not selected_candidates:
-        return jsonify({"error": "No candidates matched with the job description"}), 404
-
-    return jsonify({"selected_candidates": selected_candidates, "scores": results})
-
+    return jsonify(response)
 
 @app.route("/download-excel", methods=["GET"])
 def download_excel():
-    print("inside excel")
-    """Generate and return an Excel file with clickable resume links."""
+    print("inside excel")  # Debugging
+
     if "user_email" not in session:
         return jsonify({"error": "User not logged in"}), 401
 
     selected_candidates = session.get("selected_candidates", [])
     if not selected_candidates:
+        print("❌ No selected candidates in session!")  # Debugging
         return jsonify({"error": "No selected candidates found!"}), 400
 
-    df = pd.DataFrame(selected_candidates)
-    file_path = "selected_candidates.xlsx"
-    df.to_excel(file_path, index=False)
+    print("🔍 Selected Candidates Data:", selected_candidates)
 
+    # ✅ Convert data to DataFrame
+    df = pd.DataFrame(selected_candidates)
+
+    print("🔍 DataFrame Columns:", df.columns)
+    print("🔍 DataFrame Sample:", df.head())
+
+    # ✅ Ensure "resume" column exists before adding hyperlinks
+    if "resume" in df.columns and df["resume"].notna().any():
+        #base_url = "https://huggingface.co/rohan57/mymodel/resolve/main/sample_resumes/"  # Change this to actual location
+        #df["Resume Link"] = df["resume"].apply(lambda x: f'=HYPERLINK("{base_url}{x}", "Download")' if pd.notna(x) else "No File")
+        # ✅ Get the absolute path of the sample_resumes folder
+        #resume_folder = os.path.abspath("sample_resumes")
+        base_url=os.path.abspath("uploaded_resumes")
+        # ✅ Generate local file links
+        df["Resume Link"] = df["resume"].apply(lambda x: f'=HYPERLINK("file:///{os.path.join(base_url, x)}", "Open")' if pd.notna(x) else "No File")
+    else:
+        df["Resume Link"] = "No File"  # ✅ Add empty column if "resume" is missing
+
+    print("🔍 DataFrame Columns:", df.columns)  # Debugging
+
+    # ✅ Generate a unique file name
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    file_path = f"selected_candidates_{timestamp}.xlsx"
+
+    try:
+        # ✅ Save to Excel with clickable links
+        with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
+            df.drop(columns=["resume"], errors="ignore").to_excel(writer, index=False, sheet_name="Candidates")
+
+            # ✅ Apply hyperlink format safely
+            workbook = writer.book
+            worksheet = writer.sheets["Candidates"]
+            link_format = workbook.add_format({"font_color": "blue", "underline": 1})
+
+            if "Resume Link" in df.columns:  # ✅ Check before using
+                col_idx = df.columns.get_loc("Resume Link")
+                for row_num in range(1, len(df) + 1):
+                    resume_file = df.at[row_num - 1, "resume"]
+                    resume_url = f"{base_url}{resume_file}"
+                    if isinstance(resume_file, str):
+                        worksheet.write_url(row_num, col_idx, resume_url, link_format, "Download")
+
+        return send_file(file_path, as_attachment=True)
+
+    except Exception as e:
+        print("❌ Error creating Excel file:", e)  # Debugging
+        return jsonify({"error": "Failed to generate Excel file"}), 500
+
+
+    
+@app.route("/download-resume/<filename>")
+def download_resume(filename):
+    resume_folder = "uploaded_resumes"  # Change to match your storage path
+    file_path = os.path.join(resume_folder, filename)
+    
+    if not os.path.exists(file_path):
+        return jsonify({"error": "File not found"}), 404
+    
     return send_file(file_path, as_attachment=True)
+
+@app.route("/save-selected-candidates", methods=["POST"])
+def save_selected_candidates():
+    data = request.get_json()
+    if not data or "candidates" not in data or not data["candidates"]:
+        return jsonify({"error": "No candidates provided"}), 400
+
+    session["selected_candidates"] = data["candidates"]
+    return jsonify({"message": "Selected candidates saved!"})
+
 
 def send_email(service, sender_name, sender_company, sender_email, recipient_email, subject, body):
     """Send an email using Gmail API from the logged-in HR's email."""
@@ -443,9 +455,11 @@ def send_email(service, sender_name, sender_company, sender_email, recipient_ema
     except Exception as e:
         print(f"❌ Error sending email from {sender_email}: {e}")
 
-@app.route("/send-email", methods=["POST"])
+@app.route("/send-email", methods=["POST"])  # ✅ Match frontend
 def send_selected_emails():
     print("inside selected mails")
+
+    # Check if user is logged in
     if "user_email" not in session:
         return jsonify({"error": "User not logged in"}), 401
 
@@ -453,11 +467,22 @@ def send_selected_emails():
     if not data or "candidates" not in data:
         return jsonify({"error": "No candidates provided"}), 400
 
-    for candidate in data["candidates"]:
-        send_email(service, session["hr_name"], session["hr_company"], session["user_email"], 
-                   candidate["email"], "Interview Selection", f"{candidate['name']}, You have been selected!")
+    # Ensure service exists
+    if "service" not in globals() or not service:
+        return jsonify({"error": "Email service not initialized"}), 500
 
-    return jsonify({"message": "Emails sent successfully!"})
+    errors = []
+    for candidate in data["candidates"]:
+        try:
+            send_email(service, session["hr_name"], session["hr_company"], session["user_email"], 
+                       candidate["email"], "Interview Selection", f"{candidate['name']}, You have been selected!")
+        except Exception as e:
+            errors.append(f"Failed to send to {candidate['email']}: {e}")
+
+    if errors:
+        return jsonify({"error": "Some emails failed", "details": errors}), 207  # 207 Multi-Status
+
+    return jsonify({"message": "Emails sent successfully!"}), 200
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))  # Use Render's port
